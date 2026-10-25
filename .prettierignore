@@ -1,3 +1,10 @@
 .next
 node_modules
 coverage
+# Preserve the supplied GoIT routes and official HW09 styles byte for byte.
+app/api
+**/SignInPage.module.css
+**/SignUpPage.module.css
+**/ProfilePage.module.css
+**/EditProfilePage.module.css
+**/AuthNavigation.module.css
