@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { parseSetCookie } from 'cookie';
-import { checkSession, getMe } from '@/lib/api/serverApi';
+import { parseSetCookie, stringifyCookie } from 'cookie';
+import { checkSession } from '@/lib/api/serverApi';
 
 const privateRoutes = ['/notes', '/profile'];
 const publicRoutes = ['/sign-in', '/sign-up'];
@@ -11,10 +11,12 @@ export async function proxy(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
   const isPublic = publicRoutes.includes(pathname);
+  const hasAccessToken = request.cookies.has('accessToken');
+  const hasRefreshToken = request.cookies.has('refreshToken');
   const refreshedCookies: string[] = [];
-  let authenticated = false;
+  let authenticated = hasAccessToken;
 
-  if (request.cookies.has('accessToken') || request.cookies.has('refreshToken')) {
+  if (!hasAccessToken && hasRefreshToken) {
     try {
       const session = await checkSession(request.cookies.toString());
       const data = session.data;
@@ -23,11 +25,6 @@ export async function proxy(request: NextRequest) {
         const setCookie = session.headers['set-cookie'];
         if (setCookie)
           refreshedCookies.push(...(Array.isArray(setCookie) ? setCookie : [setCookie]));
-        for (const value of refreshedCookies) {
-          const parsed = parseSetCookie(value);
-          if (parsed.value) request.cookies.set(parsed.name, parsed.value);
-        }
-        await getMe(request.cookies.toString());
         authenticated = true;
       }
     } catch {
@@ -42,7 +39,18 @@ export async function proxy(request: NextRequest) {
     response = NextResponse.redirect(new URL('/profile', request.url));
   } else {
     const headers = new Headers(request.headers);
-    headers.set('cookie', request.cookies.toString());
+    if (refreshedCookies.length > 0) {
+      const cookies: Record<string, string | undefined> = Object.fromEntries(
+        request.cookies.getAll().map(({ name, value }) => [name, value]),
+      );
+
+      for (const value of refreshedCookies) {
+        const parsed = parseSetCookie(value);
+        cookies[parsed.name] = parsed.value;
+      }
+
+      headers.set('cookie', stringifyCookie(cookies));
+    }
     response = NextResponse.next({ request: { headers } });
   }
 
